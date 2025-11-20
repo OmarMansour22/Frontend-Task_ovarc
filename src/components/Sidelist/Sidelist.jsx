@@ -1,44 +1,66 @@
-import React from 'react'
-import logo from '../../assets/logo.svg'
-import { NavLink } from 'react-router-dom'
-import ListItem from './ListItem'
-import { useLocation } from 'react-router-dom'
-import shopIcon from '../../assets/shop.jpg'
-import storeIcon from '../../assets/Bookstore.svg'
-import authorIcon from '../../assets/Featherpen.svg'
-import bookIcon from '../../assets/Book.svg'
+import React from "react";
+import logo from "../../assets/logo.svg";
+import { NavLink, useLocation } from "react-router-dom";
+import ListItem from "./ListItem";
+import shopIcon from "../../assets/shop.jpg";
+import storeIcon from "../../assets/Bookstore.svg";
+import authorIcon from "../../assets/Featherpen.svg";
+import bookIcon from "../../assets/Book.svg";
 
 const Sidelist = () => {
-  const location = useLocation()
-  const isActive = (path) => {
-    return location.pathname === path
-  }
+  const location = useLocation();
+  const isActivePath = (path) => location.pathname === path;
+
   return (
-    <div className='w-[248px] flex flex-col h-screen'>
-
-      <div className='logoSection h-36 pl-[29]' >
-
-        <img src={logo} alt="logo" className='inline-block ml-[29px] mt-[51px]' />
+    <div className="flex flex-col h-screen bg-white border-r border-gray-100 w-16 md:w-[248px]">
+      {/* Logo: hide on very small screens, show from md and up */}
+      <div className="hidden md:flex items-center h-36">
+        <img src={logo} alt="logo" className="ml-[29px] mt-[51px]" />
       </div>
-      <ul className='flex flex-col justify-start items-start h-full  gap-4'>
-        
-        <NavLink to="/" className={({ isActive }) => (isActive ? 'active' : '')}>
-          <ListItem active={isActive('/')} title="Shop" icon={shopIcon} />
+
+      <ul className="flex-1 flex flex-col items-center md:items-start gap-2 md:gap-4 mt-4 md:mt-0">
+        <NavLink
+          to="/"
+          className={({ isActive }) => (isActive ? "w-full" : "w-full")}
+        >
+          <ListItem active={isActivePath("/")} title="Shop" icon={shopIcon} />
         </NavLink>
 
-        <NavLink to="/stores" className={({ isActive }) => (isActive ? 'active' : '')}>
-          <ListItem active={isActive('/stores')} title="Stores" icon={storeIcon} />
+        <NavLink
+          to="/stores"
+          className={({ isActive }) => (isActive ? "w-full" : "w-full")}
+        >
+          <ListItem
+            active={isActivePath("/stores")}
+            title="Stores"
+            icon={storeIcon}
+          />
         </NavLink>
-        <NavLink to="/author" className={({ isActive }) => (isActive ? 'active' : '')}>
-          <ListItem active={isActive('/author')} title="Author" icon={authorIcon} />
+
+        <NavLink
+          to="/author"
+          className={({ isActive }) => (isActive ? "w-full" : "w-full")}
+        >
+          <ListItem
+            active={isActivePath("/author")}
+            title="Author"
+            icon={authorIcon}
+          />
         </NavLink>
-        <NavLink to="/books" className={({ isActive }) => (isActive ? 'active' : '')}>
-          <ListItem active={isActive('/books')} title="Books" icon={bookIcon} />
+
+        <NavLink
+          to="/books"
+          className={({ isActive }) => (isActive ? "w-full" : "w-full")}
+        >
+          <ListItem
+            active={isActivePath("/books")}
+            title="Books"
+            icon={bookIcon}
+          />
         </NavLink>
       </ul>
     </div>
-  )
-}
+  );
+};
 
-export default Sidelist
-
+export default Sidelist;

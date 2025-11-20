@@ -1,18 +1,18 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
-import Layout from './components/Layout';
-import Loading from './pages/Loading';
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Suspense, lazy } from "react";
+import Layout from "./components/Layout";
+import Loading from "./pages/Loading";
 
 // Lazy load components for route-based code splitting
-const Home = lazy(() => import('./pages/Home'));
-const Stores = lazy(() => import('./pages/Stores'));
-const Books = lazy(() => import('./pages/Books'));
-const Authors = lazy(() => import('./pages/Authors'));
-const NotFound = lazy(() => import('./pages/NotFound'));
-const StoreInventory = lazy(() => import('./pages/StoreInventory'));
-const BrowseBooks = lazy(() => import('./pages/BrowseBooks'));
-const BrowseAuthors = lazy(() => import('./pages/BrowseAuthors'));
-const BrowseStores = lazy(() => import('./pages/BrowseStores'));
+const Home = lazy(() => import("./pages/Home"));
+const Stores = lazy(() => import("./pages/Stores"));
+const Books = lazy(() => import("./pages/Books"));
+const Authors = lazy(() => import("./pages/Authors"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const StoreInventory = lazy(() => import("./pages/StoreInventory"));
+const BrowseBooks = lazy(() => import("./pages/BrowseBooks"));
+const BrowseAuthors = lazy(() => import("./pages/BrowseAuthors"));
+const BrowseStores = lazy(() => import("./pages/BrowseStores"));
 function App() {
   return (
     <Router>

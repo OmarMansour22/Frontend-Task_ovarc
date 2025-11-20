@@ -1,39 +1,63 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import Header from '../components/Header';
-import Loading from './Loading';
-import Table from '../components/Table/Table';
-import { useSearchParams } from 'react-router-dom';
+// src/pages/Authors.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import Header from "../components/Header";
+import Loading from "./Loading";
+import Table from "../components/Table/Table";
+import { useSearchParams } from "react-router-dom";
+import Modal from "../components/Modal";
+import TableActions from "../components/ActionButton/TableActions";
 
-import Modal from '../components/Modal';
-import TableActions from '../components/ActionButton/TableActions';
+import { API_BASE_URL } from "../config/api";
 
 const Authors = () => {
   const [authors, setAuthors] = useState([]);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
-  const [editingRowId, setEditingRowId] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [newName, setNewName] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(
+    searchParams.get("search") || ""
+  );
 
-  // Sync searchTerm with query params
+  // add / edit modals
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  const [newAuthor, setNewAuthor] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    nationality: "",
+  });
+
+  const [editingAuthor, setEditingAuthor] = useState(null);
+  const [editAuthorForm, setEditAuthorForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    nationality: "",
+  });
+
+  // sync search from URL
   useEffect(() => {
-    const search = searchParams.get('search') || '';
+    const search = searchParams.get("search") || "";
     setSearchTerm(search);
   }, [searchParams]);
 
-  // Fetch JSON data
+  // initial fetch
   useEffect(() => {
-    fetch('/data/authors.json')
-      .then((response) => response.json())
+    fetch(`${API_BASE_URL}/authors`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        console.log('Fetched authors:', data);
         setAuthors(Array.isArray(data) ? data : [data]);
       })
-      .catch((error) => console.error('Error fetching authors:', error));
+      .catch((err) => {
+        console.error("Error fetching authors:", err);
+        setAuthors([]);
+      });
   }, []);
 
-  // filter based on search
+  // search filter
   const filteredAuthors = useMemo(() => {
     if (!searchTerm.trim()) return authors;
     const lowerSearch = searchTerm.toLowerCase();
@@ -44,146 +68,353 @@ const Authors = () => {
     );
   }, [authors, searchTerm]);
 
+  // ---------- ADD AUTHOR ----------
+  const openAddModal = () => {
+    setNewAuthor({
+      first_name: "",
+      last_name: "",
+      email: "",
+      nationality: "",
+    });
+    setShowAddModal(true);
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+  };
+
+  const handleAddNew = async () => {
+    const { first_name, last_name, email, nationality } = newAuthor;
+
+    if (
+      !first_name.trim() ||
+      !last_name.trim() ||
+      !email.trim() ||
+      !nationality.trim()
+    ) {
+      alert(
+        "All fields (first name, last name, email, nationality) are required"
+      );
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/authors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: first_name.trim(),
+          last_name: last_name.trim(),
+          email: email.trim(),
+          nationality: nationality.trim(),
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to create author");
+
+      const created = await res.json();
+      setAuthors((prev) => [...prev, created]);
+      setNewAuthor({
+        first_name: "",
+        last_name: "",
+        email: "",
+        nationality: "",
+      });
+      closeAddModal();
+    } catch (err) {
+      console.error("Error creating author:", err);
+      alert("Failed to create author. Please try again.");
+    }
+  };
+
+  // ---------- EDIT AUTHOR ----------
+  const openEditModal = (author) => {
+    setEditingAuthor(author);
+    setEditAuthorForm({
+      first_name: author.first_name || "",
+      last_name: author.last_name || "",
+      email: author.email || "",
+      nationality: author.nationality || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setEditingAuthor(null);
+    setEditAuthorForm({
+      first_name: "",
+      last_name: "",
+      email: "",
+      nationality: "",
+    });
+    setShowEditModal(false);
+  };
+
+  const handleUpdateAuthor = async () => {
+    if (!editingAuthor) return;
+
+    const { first_name, last_name, email, nationality } = editAuthorForm;
+
+    if (
+      !first_name.trim() ||
+      !last_name.trim() ||
+      !email.trim() ||
+      !nationality.trim()
+    ) {
+      alert(
+        "All fields (first name, last name, email, nationality) are required"
+      );
+      return;
+    }
+
+    const payload = {
+      ...editingAuthor,
+      first_name: first_name.trim(),
+      last_name: last_name.trim(),
+      email: email.trim(),
+      nationality: nationality.trim(),
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/authors/${editingAuthor.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error("Failed to update author");
+
+      const updated = await res.json();
+      setAuthors((prev) =>
+        prev.map((a) => (a.id === editingAuthor.id ? updated : a))
+      );
+
+      closeEditModal();
+    } catch (err) {
+      console.error("Error updating author:", err);
+      alert("Failed to update author. Please try again.");
+    }
+  };
+
+  // ---------- DELETE AUTHOR ----------
+  const deleteAuthor = async (id, first_name, last_name) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete ${first_name} ${last_name}?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/authors/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) throw new Error("Failed to delete author");
+
+      setAuthors((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      console.error("Error deleting author:", err);
+      alert("Failed to delete author. Please try again.");
+    }
+  };
+
+  // ---------- TABLE COLUMNS ----------
   const columns = useMemo(
     () => [
-      { header: 'ID', accessorKey: 'id' },
+      { header: "ID", accessorKey: "id" },
       {
-        header: 'Name',
+        header: "Name",
         accessorFn: (row) => `${row.first_name} ${row.last_name}`,
-        id: 'name',
-        cell: ({ row }) =>
-          editingRowId === row.original.id ? (
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleSave(row.original.id);
-                } else if (e.key === 'Escape') {
-                  handleCancel();
-                }
-              }}
-              className="border border-gray-300 rounded p-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-              tooltip="Enter to save"
-            />
-          ) : (
-            `${row.original.first_name} ${row.original.last_name}`
-          ),
+        id: "name",
       },
       {
-        header: 'Actions',
-        id: 'actions',
+        header: "Email",
+        accessorKey: "email",
+      },
+      {
+        header: "Nationality",
+        accessorKey: "nationality",
+      },
+      {
+        header: "Actions",
+        id: "actions",
         cell: ({ row }) => (
-          <TableActions 
+          <TableActions
             row={row}
-            onEdit={
-              editingRowId === row.original.id
-                ? handleCancel
-                : () => handleEdit(row.original)
+            onEdit={() => openEditModal(row.original)}
+            onDelete={() =>
+              deleteAuthor(
+                row.original.id,
+                row.original.first_name,
+                row.original.last_name
+              )
             }
-            onDelete={() => deleteAuthor(row.original.id, row.original.first_name, row.original.last_name)}
           />
         ),
       },
     ],
-    [[editingRowId, editName]]
+    [authors]
   );
 
-  const deleteAuthor = (id, first_name, last_name) => {
-    // show prompt
-
-    if (window.confirm(`Are you sure you want to delete ${first_name} ${last_name}?`)) {
-      setAuthors((prevAuthors) => prevAuthors.filter((author) => author.id !== id));
-      setEditingRowId(null);
-      setEditName('');
-      setNewName('');
-    }
-  };
-
-  const handleEdit = (author) => {
-    setEditingRowId(author.id);
-    setEditName(`${author.first_name} ${author.last_name}`);
-  };
-
-  const handleSave = (id) => {
-    const [first_name, ...last_name_parts] = editName.trim().split(' ');
-    const last_name = last_name_parts.join(' ');
-
-    setAuthors(
-      authors.map((author) =>
-        author.id === id
-          ? { ...author, first_name, last_name: last_name || author.last_name }
-          : author
-      )
-    );
-
-
-    setEditingRowId(null);
-    setEditName('');
-  };
-
-  const handleCancel = () => {
-    setEditingRowId(null);
-    setEditName('');
-  };
-
-  const openModal = () => {
-    setShowModal(true);
-  };
-  const closeModal = () => {
-    setShowModal(false);
-  };
-  const handleAddNew = () => {
-    if (newName.trim() === '') {
-      return;
-    }
-    const [first_name, ...last_name_parts] = newName.trim().split(' ');
-    const last_name = last_name_parts.join(' ');
-
-    const newAuthor = {
-      id: authors.length + 1,
-      first_name,
-      last_name: last_name || '',
-    };
-
-    setAuthors((prevAuthors) => [...prevAuthors, newAuthor]);
-    
-
-    setNewName('');
-    closeModal();
-  };
-
   return (
-    <div className='py-6'>
-      <Header addNew={openModal} title="Authors List" />
+    <div className="py-6 px-4 sm:px-6 lg:px-8">
+      <Header addNew={openAddModal} title="Authors List" />
+
       {authors.length > 0 ? (
-        <Table
-          data={filteredAuthors}
-          columns={columns}
-         
-        />
+        <div className="mt-4 bg-white rounded-lg shadow-sm border border-slate-100">
+          <div className="">
+            <Table data={filteredAuthors} columns={columns} />
+          </div>
+        </div>
       ) : (
-        <Loading />
+        <div className="mt-6">
+          <Loading />
+        </div>
       )}
+
+      {/* ADD AUTHOR */}
       <Modal
-        title={' New Author'}
+        title="New Author"
         save={handleAddNew}
-        cancel={closeModal}
-        show={showModal}
-        setShow={setShowModal}
+        cancel={closeAddModal}
+        show={showAddModal}
+        setShow={setShowAddModal}
       >
-        <div className="flex flex-col gap-2 w-full">
-          <span>Author Name</span>
-          <input
-            type="text"
-            placeholder="Name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="border border-gray-300 rounded p-1 ps-3 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-          />
-          <span className="hidden text-red-500">Please enter a name</span>
+        <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 sm:gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">First Name</label>
+            <input
+              type="text"
+              placeholder="First name"
+              value={newAuthor.first_name}
+              onChange={(e) =>
+                setNewAuthor((prev) => ({
+                  ...prev,
+                  first_name: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Last Name</label>
+            <input
+              type="text"
+              placeholder="Last name"
+              value={newAuthor.last_name}
+              onChange={(e) =>
+                setNewAuthor((prev) => ({ ...prev, last_name: e.target.value }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Email</label>
+            <input
+              type="email"
+              placeholder="Email"
+              value={newAuthor.email}
+              onChange={(e) =>
+                setNewAuthor((prev) => ({ ...prev, email: e.target.value }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Nationality</label>
+            <input
+              type="text"
+              placeholder="Nationality"
+              value={newAuthor.nationality}
+              onChange={(e) =>
+                setNewAuthor((prev) => ({
+                  ...prev,
+                  nationality: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT AUTHOR */}
+      <Modal
+        title="Edit Author"
+        save={handleUpdateAuthor}
+        cancel={closeEditModal}
+        show={showEditModal}
+        setShow={setShowEditModal}
+      >
+        <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 sm:gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">First Name</label>
+            <input
+              type="text"
+              placeholder="First name"
+              value={editAuthorForm.first_name}
+              onChange={(e) =>
+                setEditAuthorForm((prev) => ({
+                  ...prev,
+                  first_name: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Last Name</label>
+            <input
+              type="text"
+              placeholder="Last name"
+              value={editAuthorForm.last_name}
+              onChange={(e) =>
+                setEditAuthorForm((prev) => ({
+                  ...prev,
+                  last_name: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Email</label>
+            <input
+              type="email"
+              placeholder="Email"
+              value={editAuthorForm.email}
+              onChange={(e) =>
+                setEditAuthorForm((prev) => ({
+                  ...prev,
+                  email: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700">Nationality</label>
+            <input
+              type="text"
+              placeholder="Nationality"
+              value={editAuthorForm.nationality}
+              onChange={(e) =>
+                setEditAuthorForm((prev) => ({
+                  ...prev,
+                  nationality: e.target.value,
+                }))
+              }
+              className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          </div>
         </div>
       </Modal>
     </div>

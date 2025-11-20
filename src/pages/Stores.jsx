@@ -1,269 +1,381 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import Header from '../components/Header';
-import Loading from './Loading';
-import Table from '../components/Table/Table';
-import { useSearchParams } from 'react-router-dom';
-import Modal from '../components/Modal';
-import TableActions from '../components/ActionButton/TableActions';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from "react";
+import Header from "../components/Header";
+import Loading from "./Loading";
+import Table from "../components/Table/Table";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import Modal from "../components/Modal";
+import TableActions from "../components/ActionButton/TableActions";
+
+import { API_BASE_URL } from "../config/api";
+
+const emptyStoreForm = {
+  name: "",
+  address_1: "",
+  address_2: "",
+  city: "",
+  state: "",
+  zip: "",
+};
 
 const Stores = () => {
   const navigate = useNavigate();
-  
-
-  const handleViewStoreInventory = (storeId) => {
-    navigate(`/store/${storeId}`);
-  };  
-
-  // State declarations
   const [stores, setStores] = useState([]);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
-  const [editingRowId, setEditingRowId] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [newStore, setNewStore] = useState({
-    name: '',
-    address: '',
-  });
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(
+    searchParams.get("search") || ""
+  );
 
-  // Sync search term with URL query parameters
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  const [newStore, setNewStore] = useState(emptyStoreForm);
+  const [editingStore, setEditingStore] = useState(null);
+  const [editStoreForm, setEditStoreForm] = useState(emptyStoreForm);
+
   useEffect(() => {
-    const search = searchParams.get('search') || '';
+    const search = searchParams.get("search") || "";
     setSearchTerm(search);
   }, [searchParams]);
 
-  // Fetch stores data
+  // Fetch from mock server
   useEffect(() => {
-    fetch('/data/stores.json')
-      .then((response) => response.json())
+    fetch(`${API_BASE_URL}/stores`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        console.log('Fetched stores:', data);
         setStores(Array.isArray(data) ? data : [data]);
       })
-      .catch((error) => console.error('Error fetching stores:', error));
+      .catch((err) => {
+        console.error("Error fetching stores:", err);
+        setStores([]);
+      });
   }, []);
 
-  // Enrich stores with computed address and filter based on search term
+  const buildFullAddress = (storeLike) => {
+    const { address_1, address_2, city, state, zip } = storeLike;
+    const parts = [
+      address_1,
+      address_2 || null,
+      city && `${city}`,
+      state && `${state} ${zip || ""}`.trim(),
+    ].filter(Boolean);
+    return parts.join(", ");
+  };
+
+  // Enrich with full_address for table & search
   const filteredStores = useMemo(() => {
-    const enrichedStores = stores.map((store) => ({
+    const enriched = stores.map((store) => ({
       ...store,
-      full_address: `${store.address_1}${store.address_2 ? `, ${store.address_2}` : ''}, ${store.city}, ${store.state} ${store.zip}`,
+      full_address: store.full_address || buildFullAddress(store),
     }));
 
-    if (!searchTerm.trim()) return enrichedStores;
+    if (!searchTerm.trim()) return enriched;
 
-    const lowerSearch = searchTerm.toLowerCase();
-    return enrichedStores.filter((store) =>
+    const lower = searchTerm.toLowerCase();
+    return enriched.filter((store) =>
       Object.values(store).some((value) =>
-        String(value).toLowerCase().includes(lowerSearch)
+        String(value).toLowerCase().includes(lower)
       )
     );
   }, [stores, searchTerm]);
 
-  // Define table columns
+  const handleViewStoreInventory = (storeId) => {
+    navigate(`/store/${storeId}`);
+  };
+
+  const onRowClick = (_e, row) => {
+    handleViewStoreInventory(row.id);
+  };
+
+  // Columns
   const columns = useMemo(
     () => [
-      { header: 'Store Id', accessorKey: 'id' },
+      { header: "Store Id", accessorKey: "id" },
+      { header: "Name", accessorKey: "name" },
+      { header: "Address", accessorKey: "full_address" },
       {
-        header: 'Name',
-        accessorKey: 'name',
-        cell: ({ row }) =>
-          editingRowId === row.original.id ? (
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSave(row.original.id);
-                if (e.key === 'Escape') handleCancel();
-              }}
-              className="border border-gray-300 rounded p-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-          ) : (
-            row.original.name
-          ),
-      },
-      { header: 'Address', accessorKey: 'full_address' },
-      {
-        header: 'Actions',
-        id: 'actions',
+        header: "Actions",
+        id: "actions",
         cell: ({ row }) => (
           <TableActions
             row={row}
-            onEdit={
-              editingRowId === row.original.id
-                ? handleCancel
-                : () => handleEdit(row.original)
-            }
+            onEdit={() => openEditModal(row.original)}
             onDelete={() => deleteStore(row.original.id, row.original.name)}
           />
         ),
       },
     ],
-    [editingRowId, editName]
+    [stores]
   );
 
-  // Handle store deletion
-  const deleteStore = (id, name) => {
-    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
-      setStores((prevStores) => prevStores.filter((store) => store.id !== id));
-      setEditingRowId(null);
-      setEditName('');
-    }
-  };
+  // ---------- ADD STORE ----------
+  const handleAddNew = async () => {
+    const { name, address_1, city, state, zip } = newStore;
 
-  // Initiate editing
-  const handleEdit = (store) => {
-    setEditingRowId(store.id);
-    setEditName(store.name);
-  };
-
-  // Save edited name
-  const handleSave = (id) => {
-    setStores(
-      stores.map((store) =>
-        store.id === id ? { ...store, name: editName } : store
-      )
-    );
-    setEditingRowId(null);
-    setEditName('');
-  };
-
-  // Cancel editing
-  const handleCancel = () => {
-    setEditingRowId(null);
-    setEditName('');
-  };
-
-  // Modal controls
-  const openModal = () => setShowModal(true);
-  const closeModal = () => {
-    setShowModal(false);
-    setNewStore({
-      name: '',
-      address: '',
-    });
-  };
-
-  // Parse address to extract address_1, address_2, city, state, and zip
-  const parseAddress = (address) => {
-    if (!address || address.trim() === '') {
-      return { address_1: '', address_2: '', city: '', state: '', zip: '' };
-    }
-
-    // Split the address by commas
-    const parts = address.split(',').map((part) => part.trim());
-
-
-    if (parts.length < 3) {
-      return { address_1: address, address_2: '', city: '', state: '', zip: '' };
-    }
-
-    // Last part should be "state zip"
-    const lastPart = parts[parts.length - 1].trim();
-    const stateZipMatch = lastPart.match(/(\w+)\s+(\d{5})/);
-    let state = '';
-    let zip = '';
-    if (stateZipMatch) {
-      state = stateZipMatch[1];
-      zip = stateZipMatch[2];
-    } else {
-      state = lastPart;
-      zip = '';
-    }
-
-    const city = parts[parts.length - 2];
-
-    const address_1 = parts[0];
-    const address_2 = parts.length > 3 ? parts[1] : '';
-
-    return { address_1, address_2, city, state, zip };
-  };
-
-  // Add new store
-  const handleAddNew = () => {
-    if (newStore.name.trim() === '' || newStore.address.trim() === '') {
-      alert('Store Name and Address are required');
+    if (
+      !name.trim() ||
+      !address_1.trim() ||
+      !city.trim() ||
+      !state.trim() ||
+      !zip.trim()
+    ) {
+      alert("Name, Address 1, City, State, and Zip are required.");
       return;
     }
 
-    // Parse the address to extract fields
-    const { address_1, address_2, city, state, zip } = parseAddress(newStore.address);
+    const maxId =
+      stores.length > 0
+        ? Math.max(...stores.map((s) => parseInt(s.id, 10) || 0))
+        : 0;
 
-    if (!city || !state || !zip) {
-      alert('Address must include city, state, and zip (e.g., "123 Main St, Athens, GA 30605")');
-      return;
-    }
-
-    const newId = stores.length > 0 ? Math.max(...stores.map((s) => s.id)) + 1 : 1;
-    const newStoreObject = {
-      id: newId,
-      name: newStore.name,
-      address_1,
-      address_2,
-      city,
-      state,
-      zip,
+    const payload = {
+      id: String(maxId + 1),
+      name: newStore.name.trim(),
+      address_1: newStore.address_1.trim(),
+      address_2: newStore.address_2.trim() || null,
+      city: newStore.city.trim(),
+      state: newStore.state.trim(),
+      zip: newStore.zip.trim(),
     };
 
-    setStores((prevStores) => [...prevStores, newStoreObject]);
-    setNewStore({
-      name: '',
-      address: '',
-    });
-    closeModal();
+    payload.full_address = buildFullAddress(payload);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/stores`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to create store");
+
+      const created = await res.json();
+      setStores((prev) => [...prev, created]);
+
+      setNewStore(emptyStoreForm);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error("Error creating store:", err);
+      alert("Failed to create store. Please try again.");
+    }
   };
-  const onRowClick = (e, rw) => {
-    handleViewStoreInventory(rw.id);
-}
+
+  const deleteStore = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/stores/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete store");
+
+      setStores((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      console.error("Error deleting store:", err);
+      alert("Failed to delete store. Please try again.");
+    }
+  };
+
+  // ---------- EDIT STORE ----------
+  const openEditModal = (store) => {
+    setEditingStore(store);
+    setEditStoreForm({
+      name: store.name || "",
+      address_1: store.address_1 || "",
+      address_2: store.address_2 || "",
+      city: store.city || "",
+      state: store.state || "",
+      zip: store.zip || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setEditingStore(null);
+    setEditStoreForm(emptyStoreForm);
+    setShowEditModal(false);
+  };
+
+  const handleUpdateStore = async () => {
+    if (!editingStore) return;
+
+    const { name, address_1, city, state, zip } = editStoreForm;
+
+    if (
+      !name.trim() ||
+      !address_1.trim() ||
+      !city.trim() ||
+      !state.trim() ||
+      !zip.trim()
+    ) {
+      alert("Name, Address 1, City, State, and Zip are required.");
+      return;
+    }
+
+    const payload = {
+      ...editingStore,
+      name: editStoreForm.name.trim(),
+      address_1: editStoreForm.address_1.trim(),
+      address_2: editStoreForm.address_2.trim() || null,
+      city: editStoreForm.city.trim(),
+      state: editStoreForm.state.trim(),
+      zip: editStoreForm.zip.trim(),
+    };
+
+    payload.full_address = buildFullAddress(payload);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/stores/${editingStore.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to update store");
+
+      const updated = await res.json();
+
+      setStores((prev) =>
+        prev.map((s) => (s.id === editingStore.id ? updated : s))
+      );
+      closeEditModal();
+    } catch (err) {
+      console.error("Error updating store:", err);
+      alert("Failed to update store. Please try again.");
+    }
+  };
+
   return (
     <div className="py-6">
-      <Header addNew={openModal} title="Stores List" />
+      <Header addNew={() => setShowAddModal(true)} title="Stores List" />
+
       {stores.length > 0 ? (
-        <Table data={filteredStores} columns={columns} onRowClick={onRowClick} />
+        <Table
+          data={filteredStores}
+          columns={columns}
+          onRowClick={onRowClick}
+        />
       ) : (
         <Loading />
       )}
+
+      {/* ADD STORE MODAL */}
       <Modal
         title="New Store"
         save={handleAddNew}
-        cancel={closeModal}
-        show={showModal}
-        setShow={setShowModal}
+        cancel={() => {
+          setShowAddModal(false);
+          setNewStore(emptyStoreForm);
+        }}
+        show={showAddModal}
+        setShow={setShowAddModal}
       >
-        <div className="flex flex-col gap-4 w-full">
-          <div>
-            <label htmlFor="name" className="block text-gray-700 font-medium mb-1">
-              Store Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={newStore.name}
-              onChange={(e) => setNewStore({ ...newStore, name: e.target.value })}
-              className="border border-gray-300 rounded p-2 w-full"
-              placeholder="Enter Store Name"
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="address" className="block text-gray-700 font-medium mb-1">
-              Address
-            </label>
-            <input
-              id="address"
-              type="text"
-              value={newStore.address}
-              onChange={(e) => setNewStore({ ...newStore, address: e.target.value })}
-              className="border border-gray-300 rounded p-2 w-full"
-              placeholder="e.g., 123 Main St, 2nd Floor, Athens, GA 30605"
-              required
-            />
-          </div>
-        </div>
+        <StoreForm
+          form={newStore}
+          onChange={(field, value) =>
+            setNewStore((prev) => ({ ...prev, [field]: value }))
+          }
+        />
       </Modal>
+
+      {/* EDIT STORE MODAL */}
+      <Modal
+        title="Edit Store"
+        save={handleUpdateStore}
+        cancel={closeEditModal}
+        show={showEditModal}
+        setShow={setShowEditModal}
+      >
+        <StoreForm
+          form={editStoreForm}
+          onChange={(field, value) =>
+            setEditStoreForm((prev) => ({ ...prev, [field]: value }))
+          }
+        />
+      </Modal>
+    </div>
+  );
+};
+
+const StoreForm = ({ form, onChange }) => {
+  return (
+    <div className="flex flex-col gap-4 w-full">
+      <div>
+        <label className="block text-gray-700 font-medium mb-1">
+          Store Name
+        </label>
+        <input
+          type="text"
+          value={form.name}
+          onChange={(e) => onChange("name", e.target.value)}
+          className="border border-gray-300 rounded p-2 w-full"
+          placeholder="Enter Store Name"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-gray-700 font-medium mb-1">
+          Address 1
+        </label>
+        <input
+          type="text"
+          value={form.address_1}
+          onChange={(e) => onChange("address_1", e.target.value)}
+          className="border border-gray-300 rounded p-2 w-full"
+          placeholder='e.g. "79177 Main Drive"'
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-gray-700 font-medium mb-1">
+          Address 2 (optional)
+        </label>
+        <input
+          type="text"
+          value={form.address_2}
+          onChange={(e) => onChange("address_2", e.target.value)}
+          className="border border-gray-300 rounded p-2 w-full"
+          placeholder='e.g. "2nd Floor"'
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-gray-700 font-medium mb-1">City</label>
+          <input
+            type="text"
+            value={form.city}
+            onChange={(e) => onChange("city", e.target.value)}
+            className="border border-gray-300 rounded p-2 w-full"
+            placeholder="New Orleans"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-gray-700 font-medium mb-1">State</label>
+          <input
+            type="text"
+            value={form.state}
+            onChange={(e) => onChange("state", e.target.value)}
+            className="border border-gray-300 rounded p-2 w-full"
+            placeholder="LA"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-gray-700 font-medium mb-1">Zip</label>
+          <input
+            type="text"
+            value={form.zip}
+            onChange={(e) => onChange("zip", e.target.value)}
+            className="border border-gray-300 rounded p-2 w-full"
+            placeholder="70142"
+            required
+          />
+        </div>
+      </div>
     </div>
   );
 };
