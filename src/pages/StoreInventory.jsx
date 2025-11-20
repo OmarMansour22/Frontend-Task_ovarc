@@ -1,4 +1,3 @@
-// src/pages/Inventory.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import Header from "../components/Header";

@@ -1,4 +1,3 @@
-// src/pages/Authors.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
 import Loading from "./Loading";
