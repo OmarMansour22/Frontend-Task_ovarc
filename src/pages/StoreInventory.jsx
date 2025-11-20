@@ -12,8 +12,6 @@ const Inventory = () => {
   const { storeId } = useParams();
   const [searchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
-
-  // UI state
   const [activeTab, setActiveTab] = useState("books");
   const [showModal, setShowModal] = useState(false);
 
