@@ -6,6 +6,7 @@ import BooksTable from "../components/BooksTable";
 import { useSearchParams } from "react-router-dom";
 import Modal from "../components/Modal";
 import { API_BASE_URL } from "../config/api";
+import { useAuth } from "../context/AuthContext";
 
 const BASE_URL = API_BASE_URL;
 
@@ -19,6 +20,8 @@ const emptyBookForm = {
 };
 
 const Books = () => {
+  const { isAuthenticated } = useAuth();
+
   const [books, setBooks] = useState([]);
   const [authors, setAuthors] = useState([]);
   const [searchParams] = useSearchParams();
@@ -38,7 +41,7 @@ const Books = () => {
     setSearchTerm(search);
   }, [searchParams]);
 
-  // fetch books + authors from mock server
+  // fetch books + authors
   useEffect(() => {
     Promise.all([
       fetch(`${BASE_URL}/books`).then((r) => r.json()),
@@ -66,6 +69,10 @@ const Books = () => {
 
   // open create modal
   const openCreateModal = () => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to add a book.");
+      return;
+    }
     setBookForm(emptyBookForm);
     setEditingBookId(null);
     setShowCreateModal(true);
@@ -78,6 +85,11 @@ const Books = () => {
 
   // open edit modal with selected book
   const openEditModal = (book) => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to edit a book.");
+      return;
+    }
+
     setEditingBookId(book.id);
     setBookForm({
       author_id: book.author_id ?? "",
@@ -102,6 +114,11 @@ const Books = () => {
 
   // create new book
   const handleCreateBook = async () => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to add a book.");
+      return;
+    }
+
     const { author_id, name, isbn, language, page_count, format } = bookForm;
 
     if (!author_id || !name || !isbn || !language || !page_count || !format) {
@@ -138,6 +155,11 @@ const Books = () => {
 
   // update existing book
   const handleUpdateBook = async () => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to edit a book.");
+      return;
+    }
+
     if (!editingBookId) return;
 
     const { author_id, name, isbn, language, page_count, format } = bookForm;
@@ -186,6 +208,11 @@ const Books = () => {
 
   // delete book – receives the whole book object from BooksTable
   const deleteBook = async (book) => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to delete a book.");
+      return;
+    }
+
     const id = book.id;
     const name = book.name;
 
@@ -208,7 +235,12 @@ const Books = () => {
 
   return (
     <div className="py-6">
-      <Header addNew={openCreateModal} title="Books List" />
+      {isAuthenticated && (
+        <Header
+          addNew={isAuthenticated ? openCreateModal : undefined}
+          title="Books List"
+        />
+      )}
 
       {books.length > 0 ? (
         <BooksTable
@@ -216,6 +248,7 @@ const Books = () => {
           authors={authors}
           onEdit={openEditModal}
           onDelete={deleteBook}
+          isAuthenticated={isAuthenticated}
         />
       ) : (
         <Loading />

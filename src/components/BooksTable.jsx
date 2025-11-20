@@ -8,6 +8,7 @@ const BooksTable = ({
   authors,
   onEdit, // function(book)
   onDelete, // function(book)
+  isAuthenticated = false,
   columnsConfig = [
     "id",
     "name",
@@ -62,10 +63,19 @@ const BooksTable = ({
     [onEdit, onDelete]
   );
 
+  // If not authenticated, strip out "actions" from columnsConfig
+  const effectiveColumnsConfig = useMemo(
+    () =>
+      isAuthenticated
+        ? columnsConfig
+        : columnsConfig.filter((key) => key !== "actions"),
+    [columnsConfig, isAuthenticated]
+  );
+
   // Pick only requested columns
   const columns = useMemo(
-    () => columnsConfig.map((key) => allColumns[key]).filter(Boolean),
-    [columnsConfig, allColumns]
+    () => effectiveColumnsConfig.map((key) => allColumns[key]).filter(Boolean),
+    [effectiveColumnsConfig, allColumns]
   );
 
   return <Table data={enrichedBooks} columns={columns} />;

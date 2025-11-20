@@ -6,17 +6,17 @@ import Loading from "./Loading";
 import Modal from "../components/Modal";
 import Table from "../components/Table/Table";
 import TableActions from "../components/ActionButton/TableActions";
-
 import { API_BASE_URL } from "../config/api";
+import { useAuth } from "../context/AuthContext";
 
 const Inventory = () => {
   const { storeId } = useParams();
   const [searchParams] = useSearchParams();
+  const { isAuthenticated } = useAuth();
 
   // UI state
   const [activeTab, setActiveTab] = useState("books");
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   // Data state
   const [store, setStore] = useState(null);
@@ -25,27 +25,16 @@ const Inventory = () => {
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Inline price edit state (books table)
+  // Inline edit state (price)
   const [editingRowId, setEditingRowId] = useState(null); // inventory row id
   const [editPrice, setEditPrice] = useState("");
 
-  // Add-to-inventory modal form
+  // "Add to inventory" modal form
   const [modalBookId, setModalBookId] = useState("");
   const [modalPrice, setModalPrice] = useState("");
 
-  // Edit-inventory modal form (edit all inputs: book + price)
-  const [editForm, setEditForm] = useState({
-    inventoryId: null,
-    book_id: "",
-    price: "",
-  });
-
-  // Search & sort for books tab
-  const [booksSearch, setBooksSearch] = useState("");
-  const [sortConfig, setSortConfig] = useState({
-    key: "id",
-    direction: "asc", // "asc" | "desc"
-  });
+  // Search term inside this store
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("q") || "");
 
   // Sync tab from ?view= query param (books / authors)
   useEffect(() => {
@@ -108,7 +97,7 @@ const Inventory = () => {
   }, [storeId]);
 
   // Books available in this store with joined data
-  const booksInStore = useMemo(() => {
+  const booksInStoreRaw = useMemo(() => {
     const filteredInv = inventory.filter(
       (item) => String(item.store_id) === String(storeId)
     );
@@ -132,7 +121,17 @@ const Inventory = () => {
     });
   }, [inventory, books, authors, storeId]);
 
-  // Authors that have books in this store (for Authors tab)
+  // Search filter within this store
+  const booksInStore = useMemo(() => {
+    if (!searchTerm.trim()) return booksInStoreRaw;
+
+    const lower = searchTerm.toLowerCase();
+    return booksInStoreRaw.filter((b) =>
+      Object.values(b).some((v) => String(v).toLowerCase().includes(lower))
+    );
+  }, [booksInStoreRaw, searchTerm]);
+
+  // Authors that have books in this store (authors tab)
   const authorsInStore = useMemo(() => {
     const filteredInv = inventory.filter(
       (item) => String(item.store_id) === String(storeId)
@@ -167,48 +166,13 @@ const Inventory = () => {
     return Array.from(authorMap.values());
   }, [inventory, books, authors, storeId]);
 
-  // SEARCH + SORT for the Books tab
-  const sortedAndFilteredBooks = useMemo(() => {
-    let data = [...booksInStore];
-
-    // Search by id / name / author
-    if (booksSearch.trim()) {
-      const term = booksSearch.toLowerCase();
-      data = data.filter(
-        (b) =>
-          String(b.id).toLowerCase().includes(term) ||
-          String(b.name).toLowerCase().includes(term) ||
-          String(b.author_name).toLowerCase().includes(term)
-      );
-    }
-
-    // Sort by selected column
-    if (sortConfig.key) {
-      const { key, direction } = sortConfig;
-      data.sort((a, b) => {
-        const aVal = a[key];
-        const bVal = b[key];
-
-        // numeric vs string
-        const aNum = Number(aVal);
-        const bNum = Number(bVal);
-        let cmp;
-
-        if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
-          cmp = aNum - bNum;
-        } else {
-          cmp = String(aVal ?? "").localeCompare(String(bVal ?? ""));
-        }
-
-        return direction === "asc" ? cmp : -cmp;
-      });
-    }
-
-    return data;
-  }, [booksInStore, booksSearch, sortConfig]);
-
-  // Actions: Delete inventory row (remove book from store)
+  // ---------- DELETE (only if logged in) ----------
   const handleDeleteBookFromStore = async (row) => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to modify the inventory.");
+      return;
+    }
+
     const { inventoryId, name } = row;
     if (
       !window.confirm(
@@ -237,8 +201,12 @@ const Inventory = () => {
     }
   };
 
-  // Inline PRICE edit (click on price cell)
+  // ---------- INLINE EDIT PRICE (only if logged in) ----------
   const startEditPrice = (row) => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to edit prices.");
+      return;
+    }
     setEditingRowId(row.inventoryId);
     setEditPrice(String(row.price ?? ""));
   };
@@ -249,98 +217,14 @@ const Inventory = () => {
   };
 
   const saveEditPrice = async (row) => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to edit prices.");
+      return;
+    }
+
     const inventoryId = row.inventoryId;
     const parsedPrice = Number(editPrice);
 
-    if (Number.isNaN(parsedPrice)) {
-      alert("Price must be a valid number");
-      return;
-    }
-
-    // Try to find by id OR by (book_id, store_id)
-    const existing = inventory.find(
-      (item) =>
-        String(item.id) === String(inventoryId) ||
-        (String(item.book_id) === String(row.id) &&
-          String(item.store_id) === String(storeId))
-    );
-
-    if (!existing) {
-      console.error("Inventory record not found for:", {
-        inventoryId,
-        row,
-        inventory,
-      });
-      alert(
-        "Inventory record not found – check that your inventory data has an 'id' field."
-      );
-      return;
-    }
-
-    const payload = {
-      ...existing,
-      price: parsedPrice,
-    };
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/inventory/${existing.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Failed to update price");
-
-      const updated = await res.json();
-
-      setInventory((prev) =>
-        prev.map((item) =>
-          String(item.id) === String(updated.id) ? updated : item
-        )
-      );
-      setEditingRowId(null);
-      setEditPrice("");
-    } catch (err) {
-      console.error("Error updating price:", err);
-      alert("Failed to update price. Please try again.");
-    }
-  };
-
-  // OPEN EDIT MODAL (edit all inputs: book + price)
-  const openEditModal = (row) => {
-    const inv = inventory.find(
-      (item) => String(item.id) === String(row.inventoryId)
-    );
-    if (!inv) {
-      alert("Inventory record not found");
-      return;
-    }
-    setEditForm({
-      inventoryId: inv.id,
-      book_id: String(inv.book_id),
-      price: String(inv.price ?? ""),
-    });
-    setShowEditModal(true);
-  };
-
-  const closeEditModal = () => {
-    setShowEditModal(false);
-    setEditForm({
-      inventoryId: null,
-      book_id: "",
-      price: "",
-    });
-  };
-
-  const handleSaveEditModal = async () => {
-    const { inventoryId, book_id, price } = editForm;
-    if (!inventoryId) return;
-
-    if (!book_id || !price) {
-      alert("Please select a book and enter a price.");
-      return;
-    }
-
-    const parsedPrice = Number(price);
     if (Number.isNaN(parsedPrice)) {
       alert("Price must be a valid number");
       return;
@@ -356,7 +240,6 @@ const Inventory = () => {
 
     const payload = {
       ...existing,
-      book_id: Number(book_id),
       price: parsedPrice,
     };
 
@@ -366,7 +249,7 @@ const Inventory = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to update inventory item");
+      if (!res.ok) throw new Error("Failed to update price");
 
       const updated = await res.json();
 
@@ -375,16 +258,17 @@ const Inventory = () => {
           String(item.id) === String(inventoryId) ? updated : item
         )
       );
-      closeEditModal();
+      setEditingRowId(null);
+      setEditPrice("");
     } catch (err) {
-      console.error("Error updating inventory item:", err);
-      alert("Failed to update inventory item. Please try again.");
+      console.error("Error updating price:", err);
+      alert("Failed to update price. Please try again.");
     }
   };
 
-  // Columns for Books tab
-  const bookColumns = useMemo(
-    () => [
+  // ---------- TABLE COLUMNS ----------
+  const bookColumns = useMemo(() => {
+    const cols = [
       { header: "Book Id", accessorKey: "id" },
       { header: "Name", accessorKey: "name" },
       { header: "Pages", accessorKey: "page_count" },
@@ -412,32 +296,44 @@ const Inventory = () => {
             />
           ) : (
             <span
-              className="cursor-pointer"
-              onClick={() => startEditPrice(row.original)}
-              title="Click to edit price (inline)"
+              className={isAuthenticated ? "cursor-pointer" : "text-gray-500"}
+              onClick={
+                isAuthenticated ? () => startEditPrice(row.original) : undefined
+              }
+              title={
+                isAuthenticated
+                  ? "Click to edit price"
+                  : "Sign in to edit price"
+              }
             >
               {row.original.price}
             </span>
           ),
       },
-      {
+    ];
+
+    // Only show Actions column if logged in
+    if (isAuthenticated) {
+      cols.push({
         header: "Actions",
         id: "actions",
         cell: ({ row }) => (
           <TableActions
             row={row}
-            // Edit button -> popup to edit all inputs
-            onEdit={() => openEditModal(row.original)}
-            // Delete button -> remove from store
+            onEdit={
+              editingRowId === row.original.inventoryId
+                ? cancelEditPrice
+                : () => startEditPrice(row.original)
+            }
             onDelete={() => handleDeleteBookFromStore(row.original)}
           />
         ),
-      },
-    ],
-    [editingRowId, editPrice]
-  );
+      });
+    }
 
-  // Columns for Authors tab (simple)
+    return cols;
+  }, [editingRowId, editPrice, isAuthenticated]);
+
   const authorColumns = useMemo(
     () => [
       { header: "Author", accessorKey: "name" },
@@ -446,16 +342,24 @@ const Inventory = () => {
     []
   );
 
-  // Modal controls: ADD
-  const openAddModal = () => {
+  // ---------- Modal controls (Add inventory – only if logged in) ----------
+  const openModal = () => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to add inventory.");
+      return;
+    }
     setModalBookId("");
     setModalPrice("");
-    setShowAddModal(true);
+    setShowModal(true);
   };
-  const closeAddModal = () => setShowAddModal(false);
+  const closeModal = () => setShowModal(false);
 
-  // Add book to inventory (store)
   const handleAddToInventory = async () => {
+    if (!isAuthenticated) {
+      alert("You must be signed in to add inventory.");
+      return;
+    }
+
     if (!modalBookId || !modalPrice) {
       alert("Please select a book and enter a price.");
       return;
@@ -477,7 +381,7 @@ const Inventory = () => {
 
       const created = await res.json();
       setInventory((prev) => [...prev, created]);
-      closeAddModal();
+      closeModal();
     } catch (err) {
       console.error("Error adding inventory record:", err);
       alert("Failed to add book to store. Please try again.");
@@ -491,7 +395,7 @@ const Inventory = () => {
   return (
     <div className="py-6">
       {/* Tabs */}
-      <div className="flex mb-4 w-full justify-center items-center">
+      <div className="flex mb-4 w-full justify-center items-center gap-4">
         <button
           onClick={() => setActiveTab("books")}
           className={`px-4 border-b-2 py-2 ${
@@ -514,63 +418,34 @@ const Inventory = () => {
         </button>
       </div>
 
-      <Header
-        addNew={openAddModal}
-        title={`Store Inventory${store ? ` - ${store.name}` : ""}`}
-        buttonTitle="Add to inventory"
-      />
+      {/* Header: Add to inventory only when logged in */}
+      {isAuthenticated && (
+        <Header
+          addNew={isAuthenticated ? openModal : undefined}
+          title={`Store Inventory${store ? ` - ${store.name}` : ""}`}
+          buttonTitle="Add to inventory"
+        />
+      )}
+
+      {/* Search bar for books in this store */}
+      {activeTab === "books" && (
+        <div className="mt-4 mb-2 max-w-md">
+          <input
+            type="text"
+            placeholder="Search books in this store..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="border border-gray-300 rounded p-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
 
       {/* Books tab */}
       {activeTab === "books" ? (
         booksInStore.length > 0 ? (
-          <>
-            {/* Search + Sort controls */}
-            <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <input
-                type="text"
-                placeholder="Search books in this store (by id, name, author)..."
-                value={booksSearch}
-                onChange={(e) => setBooksSearch(e.target.value)}
-                className="border border-gray-300 rounded p-2 w-full md:w-1/2 focus:outline-none focus:ring-2 focus:ring-main"
-              />
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-gray-700">Sort by:</span>
-                <select
-                  value={sortConfig.key}
-                  onChange={(e) =>
-                    setSortConfig((prev) => ({
-                      ...prev,
-                      key: e.target.value,
-                    }))
-                  }
-                  className="border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-main"
-                >
-                  <option value="id">Book Id</option>
-                  <option value="name">Name</option>
-                  <option value="page_count">Pages</option>
-                  <option value="author_name">Author</option>
-                  <option value="price">Price</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSortConfig((prev) => ({
-                      ...prev,
-                      direction: prev.direction === "asc" ? "desc" : "asc",
-                    }))
-                  }
-                  className="border border-gray-300 rounded px-3 py-2 text-sm hover:bg-gray-100"
-                >
-                  {sortConfig.direction === "asc" ? "Asc ↑" : "Desc ↓"}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 overflow-x-auto">
-              <Table data={sortedAndFilteredBooks} columns={bookColumns} />
-            </div>
-          </>
+          <div className="mt-2 overflow-x-auto">
+            <Table data={booksInStore} columns={bookColumns} />
+          </div>
         ) : (
           <p className="text-gray-600 mt-4">No books found in this store.</p>
         )
@@ -585,13 +460,13 @@ const Inventory = () => {
         </p>
       )}
 
-      {/* ADD inventory modal */}
+      {/* Add inventory modal */}
       <Modal
         title="Add Book to Store Inventory"
         save={handleAddToInventory}
-        cancel={closeAddModal}
-        show={showAddModal}
-        setShow={setShowAddModal}
+        cancel={closeModal}
+        show={showModal}
+        setShow={setShowModal}
       >
         <div className="flex flex-col gap-4 w-full">
           <div>
@@ -631,67 +506,6 @@ const Inventory = () => {
               placeholder="Enter Price (e.g., 29.99)"
               value={modalPrice}
               onChange={(e) => setModalPrice(e.target.value)}
-            />
-          </div>
-        </div>
-      </Modal>
-
-      {/* EDIT inventory modal */}
-      <Modal
-        title="Edit Book in Store Inventory"
-        save={handleSaveEditModal}
-        cancel={closeEditModal}
-        show={showEditModal}
-        setShow={setShowEditModal}
-      >
-        <div className="flex flex-col gap-4 w-full">
-          <div>
-            <label
-              htmlFor="edit_book_select"
-              className="block text-gray-700 font-medium mb-1"
-            >
-              Select Book
-            </label>
-            <select
-              id="edit_book_select"
-              className="border border-gray-300 rounded p-2 w-full"
-              value={editForm.book_id}
-              onChange={(e) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  book_id: e.target.value,
-                }))
-              }
-            >
-              <option value="">Select a book</option>
-              {books.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="edit_price"
-              className="block text-gray-700 font-medium mb-1"
-            >
-              Price
-            </label>
-            <input
-              id="edit_price"
-              type="number"
-              step="0.01"
-              className="border border-gray-300 rounded p-2 w-full"
-              placeholder="Enter Price (e.g., 29.99)"
-              value={editForm.price}
-              onChange={(e) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  price: e.target.value,
-                }))
-              }
             />
           </div>
         </div>

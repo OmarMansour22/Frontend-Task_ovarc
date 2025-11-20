@@ -1,3 +1,4 @@
+// src/pages/Stores.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
 import Loading from "./Loading";
@@ -7,6 +8,7 @@ import Modal from "../components/Modal";
 import TableActions from "../components/ActionButton/TableActions";
 
 import { API_BASE_URL } from "../config/api";
+import { useAuth } from "../context/AuthContext";
 
 const emptyStoreForm = {
   name: "",
@@ -19,6 +21,8 @@ const emptyStoreForm = {
 
 const Stores = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth(); // 🔐 auth state
+
   const [stores, setStores] = useState([]);
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(
@@ -37,7 +41,7 @@ const Stores = () => {
     setSearchTerm(search);
   }, [searchParams]);
 
-  // Fetch from mock server
+  // Fetch from backend / mock
   useEffect(() => {
     fetch(`${API_BASE_URL}/stores`)
       .then((res) => {
@@ -82,6 +86,7 @@ const Stores = () => {
   }, [stores, searchTerm]);
 
   const handleViewStoreInventory = (storeId) => {
+    // Browsing inventory is allowed even if not logged in
     navigate(`/store/${storeId}`);
   };
 
@@ -89,13 +94,17 @@ const Stores = () => {
     handleViewStoreInventory(row.id);
   };
 
-  // Columns
-  const columns = useMemo(
-    () => [
+  // ---------- TABLE COLUMNS ----------
+  const columns = useMemo(() => {
+    const baseColumns = [
       { header: "Store Id", accessorKey: "id" },
       { header: "Name", accessorKey: "name" },
       { header: "Address", accessorKey: "full_address" },
-      {
+    ];
+
+    // Only show Actions column if logged in
+    if (isAuthenticated) {
+      baseColumns.push({
         header: "Actions",
         id: "actions",
         cell: ({ row }) => (
@@ -105,13 +114,16 @@ const Stores = () => {
             onDelete={() => deleteStore(row.original.id, row.original.name)}
           />
         ),
-      },
-    ],
-    [stores]
-  );
+      });
+    }
+
+    return baseColumns;
+  }, [stores, isAuthenticated]);
 
   // ---------- ADD STORE ----------
   const handleAddNew = async () => {
+    if (!isAuthenticated) return; // safety check
+
     const { name, address_1, city, state, zip } = newStore;
 
     if (
@@ -162,6 +174,8 @@ const Stores = () => {
   };
 
   const deleteStore = async (id, name) => {
+    if (!isAuthenticated) return; // safety check
+
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
 
     try {
@@ -179,6 +193,8 @@ const Stores = () => {
 
   // ---------- EDIT STORE ----------
   const openEditModal = (store) => {
+    if (!isAuthenticated) return; // safety
+
     setEditingStore(store);
     setEditStoreForm({
       name: store.name || "",
@@ -198,6 +214,7 @@ const Stores = () => {
   };
 
   const handleUpdateStore = async () => {
+    if (!isAuthenticated) return; // safety
     if (!editingStore) return;
 
     const { name, address_1, city, state, zip } = editStoreForm;
@@ -247,7 +264,13 @@ const Stores = () => {
 
   return (
     <div className="py-6">
-      <Header addNew={() => setShowAddModal(true)} title="Stores List" />
+      {/* Header: only pass addNew if logged in, so button hides when logged out */}
+      {isAuthenticated && (
+        <Header
+          title="Stores List"
+          addNew={isAuthenticated ? () => setShowAddModal(true) : undefined}
+        />
+      )}
 
       {stores.length > 0 ? (
         <Table
@@ -259,7 +282,7 @@ const Stores = () => {
         <Loading />
       )}
 
-      {/* ADD STORE MODAL */}
+      {/* ADD STORE MODAL (only openable if logged in) */}
       <Modal
         title="New Store"
         save={handleAddNew}
@@ -278,7 +301,7 @@ const Stores = () => {
         />
       </Modal>
 
-      {/* EDIT STORE MODAL */}
+      {/* EDIT STORE MODAL (only reachable if logged in) */}
       <Modal
         title="Edit Store"
         save={handleUpdateStore}

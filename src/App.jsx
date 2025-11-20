@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Layout from "./components/Layout";
 import Loading from "./pages/Loading";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 // Lazy load components for route-based code splitting
 const Home = lazy(() => import("./pages/Home"));
@@ -27,7 +29,9 @@ function App() {
             <Route path="/browsebooks" element={<BrowseBooks />} />
             <Route path="/browseauthors" element={<BrowseAuthors />} />
             <Route path="/browsestores" element={<BrowseStores />} />
-            <Route path="*" element={<NotFound />} />
+
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
           </Route>
         </Routes>
       </Suspense>

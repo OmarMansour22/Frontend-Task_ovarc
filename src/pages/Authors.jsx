@@ -8,8 +8,11 @@ import Modal from "../components/Modal";
 import TableActions from "../components/ActionButton/TableActions";
 
 import { API_BASE_URL } from "../config/api";
+import { useAuth } from "../context/AuthContext";
 
 const Authors = () => {
+  const { isAuthenticated } = useAuth();
+
   const [authors, setAuthors] = useState([]);
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(
@@ -70,6 +73,7 @@ const Authors = () => {
 
   // ---------- ADD AUTHOR ----------
   const openAddModal = () => {
+    if (!isAuthenticated) return; // safety check
     setNewAuthor({
       first_name: "",
       last_name: "",
@@ -129,6 +133,7 @@ const Authors = () => {
 
   // ---------- EDIT AUTHOR ----------
   const openEditModal = (author) => {
+    if (!isAuthenticated) return; // safety
     setEditingAuthor(author);
     setEditAuthorForm({
       first_name: author.first_name || "",
@@ -198,6 +203,7 @@ const Authors = () => {
 
   // ---------- DELETE AUTHOR ----------
   const deleteAuthor = async (id, first_name, last_name) => {
+    if (!isAuthenticated) return; // safety
     if (
       !window.confirm(
         `Are you sure you want to delete ${first_name} ${last_name}?`
@@ -221,8 +227,8 @@ const Authors = () => {
   };
 
   // ---------- TABLE COLUMNS ----------
-  const columns = useMemo(
-    () => [
+  const columns = useMemo(() => {
+    const baseColumns = [
       { header: "ID", accessorKey: "id" },
       {
         header: "Name",
@@ -237,7 +243,11 @@ const Authors = () => {
         header: "Nationality",
         accessorKey: "nationality",
       },
-      {
+    ];
+
+    // Only show Actions column if user is logged in
+    if (isAuthenticated) {
+      baseColumns.push({
         header: "Actions",
         id: "actions",
         cell: ({ row }) => (
@@ -253,14 +263,21 @@ const Authors = () => {
             }
           />
         ),
-      },
-    ],
-    [authors]
-  );
+      });
+    }
+
+    return baseColumns;
+  }, [authors, isAuthenticated]);
 
   return (
     <div className="py-6 px-4 sm:px-6 lg:px-8">
-      <Header addNew={openAddModal} title="Authors List" />
+      {/* Header: only pass addNew if logged in */}
+      {isAuthenticated && (
+        <Header
+          title="Authors List"
+          addNew={isAuthenticated ? openAddModal : undefined}
+        />
+      )}
 
       {authors.length > 0 ? (
         <div className="mt-4 bg-white rounded-lg shadow-sm border border-slate-100">
@@ -274,7 +291,7 @@ const Authors = () => {
         </div>
       )}
 
-      {/* ADD AUTHOR */}
+      {/* ADD AUTHOR (only reachable when logged in, but still guarded by isAuthenticated above) */}
       <Modal
         title="New Author"
         save={handleAddNew}
